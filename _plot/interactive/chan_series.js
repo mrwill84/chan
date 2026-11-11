@@ -72,6 +72,27 @@ function pointSeries(name, pts, isBuy) {
   };
 }
 
+// 笔、段的编号：b796 / d106，标在每一笔（段）的中点。编号用引擎里的下标（回放的快照只带最近
+// 几十笔，带着 i；普通模式是全量，数组下标就是），和右边理由里的「第 796 笔」「第 106 段」一致。
+// 只标 [a, b) 里的；挤在一起时 ECharts 自己藏掉重叠的（hideOverlap），放大就都出来了
+function numSeries(name, items, prefix, color, size, a, b) {
+  const data = [];
+  items.forEach((s, k) => {
+    if (s.x1 < a || s.x0 >= b) return;
+    data.push({ value: [Math.round((s.x0 + s.x1) / 2), (s.y0 + s.y1) / 2], text: prefix + (s.i ?? k) });
+  });
+  return {
+    name, type: "scatter", xAxisIndex: 0, yAxisIndex: 0, symbolSize: 1, silent: true, z: 7,
+    itemStyle: { color: "rgba(0,0,0,0)" },
+    label: {
+      show: true, position: "inside", fontSize: size, fontWeight: prefix === "d" ? "bold" : "normal",
+      color, textBorderColor: "#fff", textBorderWidth: 2, formatter: (p) => p.data.text,
+    },
+    labelLayout: { hideOverlap: true },
+    data,
+  };
+}
+
 // 每个级别的蜡烛行只建一次（按 ohlc 数组缓存），回放每一步只拷引用
 const CANDLES = new WeakMap();
 function candleRows(L) {
@@ -109,6 +130,8 @@ function buildOption(L, opts) {
     series.push(lineSeries("线段", c.solid, COL.seg, 2.6, false));
     series.push(lineSeries("线段(未确认)", c.dashed, COL.seg, 2.6, true));
   }
+  if (sh.num && sh.bi) series.push(numSeries("笔编号", L.bis, "b", COL.bi, 10, a, b));
+  if (sh.num && sh.seg) series.push(numSeries("段编号", L.segs, "d", COL.seg, 11, a, b));
   if (sh.bizs) series.push(zsSeries("笔中枢", L.bi_zs, cats, COL.bizs));
   if (sh.segzs) series.push(zsSeries("线段中枢", L.seg_zs, cats, COL.segzs));
   if (sh.pts) {

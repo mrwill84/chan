@@ -671,8 +671,10 @@ def level_snapshot(bars, ids, sub_points=None, *, now=False) -> dict | None:
     cut = bis[first].start.peak_idx
     out["draw"] = {
         "cut": cut,
-        "bis": [_seg_json(b) for b in bis[first:]],
-        "segs": [_seg_draw(s, bis) for s in segs[-DRAW_SEGS:]],
+        # i = 引擎里的下标，图上标 b796 / d106，和理由里的「第 796 笔」「第 106 段」对得上
+        "bis": [{**_seg_json(b), "i": first + k} for k, b in enumerate(bis[first:])],
+        "segs": [{**_seg_draw(s, bis), "i": max(0, len(segs) - DRAW_SEGS) + k}
+                 for k, s in enumerate(segs[-DRAW_SEGS:])],
         "bi_zs": [z for z in _zs_json(build_zhongshus(bl), bl, bis) if z["x1"] >= cut],
         "seg_zs": [z for z in _zs_json(seg_zs, sl, bis) if z["x1"] >= cut],
         "pts": [{"bar": p.bar, "ts": bars[p.bar].ts, "price": p.price, "kind": p.kind, "is_buy": p.is_buy,

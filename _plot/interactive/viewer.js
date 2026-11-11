@@ -67,7 +67,7 @@ function showFlags() {
   return {
     bi: $("t_bi").checked, seg: $("t_seg").checked,
     bizs: $("t_bizs").checked, segzs: $("t_segzs").checked,
-    pts: $("t_pts").checked,
+    pts: $("t_pts").checked, num: $("t_num").checked,
   };
 }
 
@@ -210,7 +210,7 @@ function follow5() {
 }
 c30.on("datazoom", follow5);
 
-for (const id of ["t_bi", "t_seg", "t_bizs", "t_segzs", "t_pts"]) {
+for (const id of ["t_bi", "t_seg", "t_bizs", "t_segzs", "t_pts", "t_num"]) {
   $(id).onchange = () => (window.REPLAY ? replayRender() : render());
 }
 for (const el of document.querySelectorAll("input[name=src]")) {
