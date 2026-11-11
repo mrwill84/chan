@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>缠论 30 分钟 / 5 分钟 联立查看</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 -apple-system, "Microsoft YaHei", sans-serif; color: #222; background: #fff;
+         height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  #bar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 6px 10px; border-bottom: 1px solid #ddd; background: #fafafa; }
+  #bar b { font-size: 15px; }
+  #bar label { white-space: nowrap; cursor: pointer; }
+  #bar .grp { display: flex; gap: 8px; align-items: center; padding-left: 10px; border-left: 1px solid #ddd; }
+  #main { display: flex; flex: 1; min-height: 0; }  /* 顶栏折行时自动让出高度 */
+  #charts { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #c30, #c5 { flex: 1; min-height: 0; }
+  #c30 { border-bottom: 2px solid #ccc; }
+  #side { width: 260px; display: flex; flex-direction: column; }
+  #split { width: 6px; cursor: col-resize; background: #e9ecef; border-left: 1px solid #ccc; border-right: 1px solid #ccc; flex: none; }
+  #split:hover, #split.drag { background: #ffd8a8; }
+  #side h4 { margin: 0; padding: 6px 8px; background: #f0f0f0; font-size: 13px; }
+  #info { padding: 6px 8px; border-bottom: 1px solid #ddd; min-height: 90px; white-space: pre-wrap; font-size: 12px; }
+  #plist { flex: 1; overflow-y: auto; font-size: 12px; }
+  #plist div { padding: 3px 8px; cursor: pointer; border-bottom: 1px solid #f3f3f3; }
+  #plist div:hover { background: #eef4ff; }
+  #plist div.sel { background: #dbe8ff; }
+  #plist .lv { display: inline-block; width: 34px; color: #888; }
+  #plist .buy { color: #c2255c; font-weight: bold; }
+  #plist .sell { color: #1971c2; font-weight: bold; }
+  #plist .uc { opacity: .5; }
+  .help { color: #888; font-size: 12px; }
+  /* 回放模式 */
+  body.replay #side { width: 500px; }
+  body.replay #info { flex: 1; min-height: 0; overflow-y: auto; white-space: normal; font-size: 12px; }
+  body.replay #plist { flex: 0 0 28%; }
+  body.replay #plist .lv { width: 82px; }  /* 回放跨好几天，时刻带日期 */
+  #info h5 { margin: 10px 0 4px; font-size: 13px; border-bottom: 1px solid #ddd; }
+  #info ul { margin: 2px 0 4px; padding-left: 18px; }
+  #info details { margin: 1px 0; }
+  #info summary { cursor: pointer; }
+  #info details.ov { outline: 2px solid #f08c00; background: #fff9f0; }  /* 图上正在画的那条理由 */
+  #info .yes { color: #c2255c; font-weight: bold; }
+  #info .no { color: #888; }
+  #info .dim, #side .dim { color: #999; }
+  .rp-head { font-size: 14px; font-weight: bold; }
+  .rp-ev { background: #fff4e6; border-left: 3px solid #f08c00; padding: 3px 6px; margin: 4px 0; }
+  .rp-sec { margin-top: 6px; }
+  .rp-tbl { border-collapse: collapse; font-size: 11px; margin: 4px 0; }
+  .rp-tbl td, .rp-tbl th { border: 1px solid #e5e5e5; padding: 1px 4px; white-space: nowrap; }
+  #bar button { font-size: 12px; padding: 1px 6px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <b id="title">—</b>
+  <div class="grp">
+    <label><input type="checkbox" id="t_bi" checked> 笔</label>
+    <label><input type="checkbox" id="t_seg" checked> 线段</label>
+    <label><input type="checkbox" id="t_bizs" checked> 笔中枢</label>
+    <label><input type="checkbox" id="t_segzs" checked> 线段中枢</label>
+    <label><input type="checkbox" id="t_pts" checked> 买卖点</label>
+  </div>
+  <div class="grp">买卖点按
+    <label><input type="radio" name="src" value="pts_seg" checked> 线段中枢</label>
+    <label><input type="radio" name="src" value="pts_bi"> 笔中枢</label>
+  </div>
+  <div class="grp">
+    <label><input type="checkbox" id="t_link"> 5 分钟跟随 30 分钟缩放</label>
+  </div>
+  <div class="grp">
+    <button id="r_start">▶ 从选中这根开始逐根回放</button>
+  </div>
+  <span class="help">点 30 分钟任意一根 → 下方 5 分钟定位到它 · ←/→ 逐根移动 · 滚轮缩放</span>
+</div>
+<div id="main">
+  <div id="charts">
+    <div id="c30"></div>
+    <div id="c5"></div>
+  </div>
+  <div id="split" title="拖动调整左右宽度"></div>
+  <div id="side">
+    <h4>当前选中</h4>
+    <div id="info">点 30 分钟图上的一根 K 线</div>
+    <h4>买卖点（点击跳转）</h4>
+    <div id="plist"></div>
+  </div>
+</div>
+<script src="echarts.min.js"></script>
+<script>
+  // ?code=600519 切换股票；数据文件由 export_interactive.py 生成
+  const Q = new URLSearchParams(location.search);
+  const CODE = Q.get("code") || "000651";
+  document.write('<script src="' + CODE + '.js"><\/script>');
+  // ?replay=replay_000651_202609281300 进回放模式，不限长度：先载第一页，后面的页 replay.js 边走边要。
+  // 一页的文件是 replay_<代码>_<起点>_<RP_PAGE>.js，由 export_replay.py 生成；RP_PAGE 要和
+  // backtest/live.py 的 PAGE 一样。旧链接末尾带的根数不管它
+  const RP_PAGE = 120;
+  const RP_WANT = (Q.get("replay") || "").match(/^replay_(\d{6})_(\d{12})(?:_\d+)?$/);
+  if (RP_WANT) {
+    document.write('<script src="replay_' + RP_WANT[1] + "_" + RP_WANT[2] + "_" + RP_PAGE + '.js"><\/script>');
+  }
+</script>
+<script src="chan_series.js"></script>
+<script src="replay.js"></script>
+<script src="viewer.js"></script>
+</body>
+</html>

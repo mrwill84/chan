@@ -1,0 +1,21 @@
+[project]
+name = "chan"
+version = "0.1.0"
+description = "缠论确定性划线引擎 + Pi agent 买卖点扫描"
+requires-python = ">=3.11"
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+data = ["pandas", "pyarrow", "akshare"]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["chan"]

@@ -1,0 +1,39 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# 原书文本提取物，仅供本地核对规则用，不入库
+.source/
+
+# 行情缓存
+data/
+
+# 一次性的探针脚本、跑出来的 JSONL、走查断点。这些是**证据**不是源码：
+# 结论该写进 CONVENTIONS.md 和各处文档串，脚本本身留着只会让人以为它们
+# 是可复现的工具（它们不是，大多写死了票号和级别）。
+.tmp/
+
+# 画图脚本的产物（脚本本身入库，产物不入）
+_plot/*.png
+_plot/*.txt
+_plot/*.err
+_plot/*.json
+_plot/*.jsonl
+_plot/*/*.png
+
+# 查看器/回放/看板的数据，由 export_interactive.py、export_replay.py、`python -m scan dash` 生成
+_plot/interactive/[0-9][0-9][0-9][0-9][0-9][0-9].js
+_plot/interactive/replay_*.js
+_plot/interactive/dashboard_data.js
+_plot/interactive/*.tmp
+
+# 全市场代码表和扫描结果，都是跑出来的
+all.txt
+have.txt
+sample.txt
+run_*.jsonl
+*.log
+
+# 由 tools/install_pi.py 从 CONVENTIONS.md 生成，入库就会和本体漂移
+pi/skills/chan-buysell/references/conventions.md

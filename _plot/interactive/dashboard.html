@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>缠论看板 30 分钟 / 5 分钟</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 -apple-system, "Microsoft YaHei", sans-serif; color: #222; }
+  #top { padding: 6px 10px; border-bottom: 1px solid #ddd; background: #fafafa; }
+  #top .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 2px 0; }
+  #top b { font-size: 15px; }
+  #top label { white-space: nowrap; cursor: pointer; }
+  #top .grp { display: flex; gap: 6px; align-items: center; padding-left: 10px; border-left: 1px solid #ddd; }
+  #top input[type=number] { width: 54px; }
+  #top input[type=text] { width: 90px; }
+  #meta { color: #777; font-size: 12px; }
+  #warn { color: #c92a2a; font-weight: bold; }
+  #main { display: flex; height: calc(100vh - 66px); }
+  #left { width: 50%; min-width: 1000px; display: flex; flex-direction: column; border-right: 2px solid #ccc; }
+  #count { padding: 3px 8px; color: #555; font-size: 12px; border-bottom: 1px solid #eee; }
+  #tbl { flex: 1; overflow: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th { position: sticky; top: 0; background: #f0f0f0; text-align: left; padding: 4px 6px; cursor: pointer; white-space: nowrap; border-bottom: 1px solid #ccc; }
+  th:hover { background: #e4e4e4; }
+  th.asc::after { content: " ▲"; } th.desc::after { content: " ▼"; }
+  td { padding: 3px 6px; border-bottom: 1px solid #f2f2f2; white-space: nowrap; }
+  tr:hover td { background: #f3f7ff; }
+  tr.sel td { background: #dbe8ff; }
+  tr.bad td { background: #ffe3e3; }
+  .buy { color: #c2255c; font-weight: bold; }
+  .sell { color: #1971c2; font-weight: bold; }
+  .uc { opacity: .5; }
+  .dim { color: #999; }
+  .up { color: #e03131; } .down { color: #2f9e44; }
+  .agree { color: #2b8a3e; } .conflict { color: #e8590c; } .incomplete { color: #999; }
+  .stale { color: #c92a2a; }
+  #right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #vbar { padding: 3px 8px; border-bottom: 1px solid #eee; font-size: 12px; color: #555; }
+  #viewer { flex: 1; border: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="top">
+  <div class="row">
+    <b>缠论看板</b>
+    <span id="meta"></span>
+    <span id="warn"></span>
+  </div>
+  <div class="row">
+    <label>代码 <input type="text" id="f_code" placeholder="如 6005"></label>
+    <div class="grp">筛选按
+      <label><input type="radio" name="lv" value="m30" checked> 30 分钟</label>
+      <label><input type="radio" name="lv" value="m5"> 5 分钟</label>
+      最新点：
+      <select id="f_side"><option value="">买卖都要</option><option value="buy">只要买点</option><option value="sell">只要卖点</option></select>
+      <label><input type="checkbox" class="f_kind" value="1" checked>1类</label>
+      <label><input type="checkbox" class="f_kind" value="2" checked>2类</label>
+      <label><input type="checkbox" class="f_kind" value="3" checked>3类</label>
+      <label>距今 ≤ <input type="number" id="f_ago" min="0" placeholder="不限"> 根</label>
+      <label><input type="checkbox" id="f_quasi" checked> 含类买卖点</label>
+      <label><input type="checkbox" id="f_conf"> 只要已确认</label>
+    </div>
+    <div class="grp">区间套
+      <select id="f_nest"><option value="">全部</option><option value="agree">一致</option><option value="conflict">冲突</option><option value="incomplete">不完整</option></select>
+    </div>
+    <div class="grp"><label><input type="checkbox" id="f_fresh"> 只看数据最新的</label></div>
+  </div>
+</div>
+<div id="main">
+  <div id="left">
+    <div id="count"></div>
+    <div id="tbl"><table><thead><tr id="head"></tr></thead><tbody id="body"></tbody></table></div>
+  </div>
+  <div id="right">
+    <div id="vbar">点左边一行，在这里打开 30/5 分钟联立图</div>
+    <iframe id="viewer"></iframe>
+  </div>
+</div>
+<script src="dashboard_data.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>
