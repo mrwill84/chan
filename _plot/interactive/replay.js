@@ -99,7 +99,7 @@ function overlaySeries(L, lv, snap) {
   const out = [];
   if (kind === "b") {
     const b = snap.beichi[id];
-    if (!b.geo) return [];
+    if (!b || !b.geo) return [];  // 选的是某种读法，这一步没有它了
     const g = b.geo;
     const bn = g.b_name || "b 段";
     out.push(zsBox(L, g.zs, `${g.zs_name || "中枢 B"} [${f1(g.zs.zd)}, ${f1(g.zs.zg)}]`));
@@ -147,7 +147,7 @@ function ovStart(lv, snap) {
   const [olv, kind, id] = R.ov.split(":");
   if (olv !== lv || !snap) return Infinity;
   if (kind === "b") {
-    const g = snap.beichi[id].geo;
+    const g = snap.beichi[id]?.geo;
     return g ? Math.min(g.zs.x0, g.b[0], g.za ? g.za.x0 : Infinity, g.start ? g.start[0] : Infinity) : Infinity;
   }
   const g = (snap.methods.find((x) => x.id === id) || {}).geo;
@@ -158,7 +158,9 @@ function ovStart(lv, snap) {
 
 function ovTitle() {
   const [lv, kind, id] = R.ov.split(":");
-  const name = kind === "b" ? { seg: "线段中枢背驰", bi: "笔中枢背驰" }[id] : SHORT[id];
+  const name = kind === "b"
+    ? ({ seg: "线段中枢背驰", bi: "笔中枢背驰（末段内）" }[id] || `笔中枢·另一种读法 ${id.slice(4)}`)
+    : SHORT[id];
   return `　图上画的理由：${lv === "5min" ? "5分" : "30分"} ${name}（点右边任一条理由切换）`;
 }
 
@@ -370,8 +372,12 @@ function levelHtml(L, tag, lv) {
       + `<div class="dim">${escH(RP.methods[m.id])}</div>${ul(m.why)}</details>`;
   }
   h += `<div class="rp-sec">背驰</div>`;
-  for (const [k, name] of [["seg", "线段中枢（c 是当下这段）"], ["bi", "笔中枢"]]) {
+  // bi_r1、bi_r2…：末段里的其他笔中枢读法（33课 多义性），这一步有几种就列几种
+  const alts = Object.keys(L.beichi).filter((k) => k.startsWith("bi_r")).sort()
+    .map((k) => [k, `　└ 另一种读法 ${k.slice(4)}`]);
+  for (const [k, name] of [["seg", "线段中枢（c 是当下这段）"], ["bi", "笔中枢（只用末段里的笔，aAb / aAbBc）"], ...alts]) {
     const b = L.beichi[k];
+    if (!b) continue;  // 旧数据没有这一项
     const head = b.hit ? `✓ ${name}：${b.kind === "trend" ? "趋势" : "盘整"}${b.top ? "顶" : "底"}背驰` : `✗ ${name}`;
     h += `<details data-ov="${lv}:b:${k}"${b.hit ? " open" : ""}><summary class="${b.hit ? "yes" : "no"}">${head}</summary>${ul(b.why)}</details>`;
   }

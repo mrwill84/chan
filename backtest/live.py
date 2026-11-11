@@ -40,7 +40,10 @@ from chan.segend import (
     _m_sub_third, _m_sublevel_1bs, _same_dir_bis, _sub_legs, provisional_end,
 )
 from chan.types import Direction
-from chan.zhongshu import build_zhongshus, legs_from_bis, legs_from_segs
+from chan.zhongshu import (
+    MIN_LEGS, TREND_DOWN, TREND_UP, build_zhongshus, legs_from_bis, legs_from_segs, relation, usable_count,
+    zhongshu_at,
+)
 
 #: 末段结束的几种当下口径。BOLL 要更高一级的K线、RSI 是对照组，这里不放。
 METHODS = {
@@ -355,12 +358,29 @@ def swallowed(legs, zss=None, depth: int = 3) -> list[int]:
     return sorted(out)
 
 
+def zss_from(legs, j: int) -> list:
+    """进入段是第 ``j`` 段的那个走势的中枢序列。
+
+    第一个中枢只能从和进入段反向的段起步（j+1、j+3…）：17课 p36 的 aAbBc 里，
+    下跌走势 a 向下进来，A 只能是 上下上。`build_zhongshus(start=)` 在找到第一个
+    中枢之前是逐段滑的（那时没有进入段可锚），直接用会滑出和 a 同向起步的中枢，
+    进入段跟着变成反向的那一笔——000651 08-12 那段下跌里就这样比成了「顶背驰」。
+    """
+    for s in range(j + 1, len(legs), 2):
+        zss = build_zhongshus(legs, start=s)
+        if not zss:
+            return []
+        if zss[0].start_leg == s:
+            return zss
+    return []
+
+
 def split_zss(legs, cuts: list[int]) -> list[tuple[int, list]]:
     """在 ``cuts``（升序）这些走势起点处拆开重划。返回 [(这一块用到第几段为止（不含）, 这一块的中枢)]：
     每一块只用它自己的段，下一块从切点那段之后起划。"""
     out, prev = [], None
     for c in cuts + [len(legs)]:
-        out.append((c, build_zhongshus(legs[:c]) if prev is None else build_zhongshus(legs[:c], start=prev + 1)))
+        out.append((c, build_zhongshus(legs[:c]) if prev is None else zss_from(legs[:c], prev)))
         prev = c
     return out
 
@@ -381,7 +401,7 @@ def _beichi(legs, bis, m, bars, unit: str = "段") -> dict:
         start_bar = bis[g.src_start].start.peak_idx
         pre.append(f"当下走势：从 {_ts(bars, start_bar)} 的{'顶' if down else '底'} "
                    f"{fp(g.high if down else g.low)} 开始的{'下跌' if down else '上涨'}，第 {j} {unit}是它的进入段 a")
-        z1 = build_zhongshus(legs, start=j + 1)
+        z1 = zss_from(legs, j)
         if not z1:
             # 新走势还没长出中枢：它自己谈不上背驰，这时有用的是前一个走势到这个顶（底）
             # 为止背驰了没有——那正是 1类买卖点要问的。只用顶（底）之前的段，免得离开段 c
@@ -394,7 +414,7 @@ def _beichi(legs, bis, m, bars, unit: str = "段") -> dict:
                 zss = build_zhongshus(legs)
             else:
                 # 前一个走势自己的起点也被吞过：它也从起点重划，不然那个中枢又配成 A、B
-                zss = build_zhongshus(legs, start=s + 1)
+                zss = zss_from(legs, s)
                 pre.append(f"前一个走势从第 {s} {unit}起（默认读法把它的起点也吞进了更早的中枢，同样按起点重划）")
             j = None
         else:
@@ -404,6 +424,131 @@ def _beichi(legs, bis, m, bars, unit: str = "段") -> dict:
                            f"[{fp(old[0].zd)}, {fp(old[0].zg)}]（第 {old[0].start_leg}~{old[0].end_leg} {unit}），"
                            "会和这个走势的中枢配成 A、B——两个走势搅在一起（33课 p79 多义性）。这里按走势起点重划")
             zss = z1
+    return _judge(legs, zss, bis, m, bars, pre, j)
+
+
+def _beichi_in(bl, bis, m, bars, j: int, what: str) -> dict:
+    """把从第 ``j`` 笔起到现在当一个笔级别的走势看背驰（区间套）：第 j 笔是进入段 a，
+    之后的笔中枢一个就是 aAb（盘整背驰，比离开的那一笔和 a），两个以上依次同向
+    不重叠就是 aAbBc（趋势背驰，比 c 和 b）。``what`` 说明这一截是什么（文字用）。
+
+    快照里拿它判「笔中枢背驰」，那一截是末段：笔背驰只在同一根线段里比，在全部笔
+    上划中枢会把段起点之前的笔中枢配进来（用户 2026-11-11 在 000651 08-11~08-17
+    那段下跌里先提了 aAb / aAbBc，又指出 b 段跑到另一根线段里是比错了）。
+    """
+    s = bis[j].start
+    down = bis[j].direction is Direction.DOWN
+    pre = [f"把{what}当一个走势看：{_ts(bars, s.peak_idx)} 从{'顶' if down else '底'} {fp(s.price)} "
+           f"起的{'下跌' if down else '上涨'}，第 {j} 笔是进入段 a，只用这里面的笔划中枢"]
+    zss = zss_from(bl, j)
+    if not zss:
+        return {"hit": False, "why": pre + ["里面还没有笔中枢，谈不上背驰"]}
+    pre.append(f"笔中枢 {len(zss)} 个：" + _zs_list(zss)
+               + ("，是 aAb" if len(zss) == 1 else "，看最后两个是不是依次同向不重叠（aAbBc）"))
+    return _judge(*_merge_entry(bl, j, zss), bis, m, bars, pre, j)
+
+
+def _merge_entry(legs, j: int, zss):
+    """第一个中枢晚起步时，把进入段 a（第 j 段到中枢起步前一段）并成一段。
+
+    `detect` 对第一个中枢只拿它紧前面那一段当 a（24课 p53 盘整背驰例子里的 A 段），
+    中枢从 j+1 起步时就是第 j 段，没问题；晚起步的读法（跳过的段算进 a）就只比到
+    a 的最后一小截。并成一段后K线窗口覆盖整个 a，MACD 面积按整个 a 算；中枢照
+    同样的起点在新序列上重建，下标整体前移。返回 (新 legs, 新中枢)。
+    """
+    from dataclasses import replace
+
+    s = zss[0].start_leg
+    if s <= j + 1:
+        return legs, zss
+    a = legs[j:s]
+    merged = replace(legs[j], end_price=legs[s - 1].end_price, src_end=legs[s - 1].src_end,
+                     low=min(g.low for g in a), high=max(g.high for g in a),
+                     confirmed=all(g.confirmed for g in a))
+    shift = s - 1 - j
+    new = legs[:j] + [merged] + [replace(g, index=g.index - shift) for g in legs[s:]]
+    usable = usable_count(new, True)
+    nz = [zhongshu_at(new, z.start_leg - shift, usable, index=k) for k, z in enumerate(zss)]
+    return (new, nz) if all(nz) else (legs, zss)
+
+
+def _zs_list(zss) -> str:
+    return "、".join(f"[{fp(z.zd)}, {fp(z.zg)}]（第 {z.start_leg}~{z.end_leg} 笔）" for z in zss)
+
+
+REL_S = {
+    TREND_UP: "依次向上、连波动都不重叠 → 上涨趋势",
+    TREND_DOWN: "依次向下、连波动都不重叠 → 下跌趋势",
+    "higher_level": "区间不重叠，但波动碰上了 → 形成更高级别中枢，只能算盘整（20课 中心定理二）",
+    "ambiguous": "区间重叠",
+}
+
+
+def alt_readings(legs, j: int, base, *, limit: int = 3, budget: int = 400) -> list[list]:
+    """从第 ``j`` 段进入的这个走势，默认读法 ``base`` 之外的中枢读法（33课 p79 多义性）。
+
+    默认读法每个中枢都从能起步的最早那段起（第一个从 j+1，之后从上一个的离开段
+    之后）；别的读法让某个中枢晚起步，跳过的段算进连接段（进入段 a 或 b）。起步
+    仍保奇偶（和进入段反向），中枢本身照引擎的定义延伸，不改。用户 2026-11-11
+    在 000651 08-11~08-17 那段下跌里画的两个笔中枢，就是第一个从笔801 而不是
+    笔799 起步的读法。
+
+    这一截里笔不多，深搜把起步点都试一遍（``budget`` 次构造封顶）。排序：能构成
+    趋势（最后两个中枢依次同向不重叠）的在前，再按中枢多的在前，再按跳过的段少的在前。
+    """
+    usable = usable_count(legs, True)
+    seqs, calls = [], [0]
+
+    def dfs(first: int, acc: list, skipped: int) -> None:
+        grew = False
+        for s in range(first, usable - MIN_LEGS + 1, 2):
+            if calls[0] >= budget:
+                break
+            calls[0] += 1
+            z = zhongshu_at(legs, s, usable, index=len(acc))
+            if z is None:
+                continue
+            grew = True
+            dfs(z.next_start, acc + [z], skipped + (s - first))
+        if not grew and acc:
+            seqs.append((acc, skipped))
+
+    dfs(j + 1, [], 0)
+    key0 = [(z.start_leg, z.end_leg) for z in base]
+
+    def rank(item):
+        zz, skipped = item
+        trend = len(zz) >= 2 and relation(zz[-2], zz[-1]) in (TREND_UP, TREND_DOWN)
+        return (not trend, -len(zz), skipped)
+
+    out = []
+    for zz, _ in sorted(seqs, key=rank):
+        k = [(z.start_leg, z.end_leg) for z in zz]
+        if k != key0 and all(k != [(z.start_leg, z.end_leg) for z in o] for o in out):
+            out.append(zz)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _beichi_alts(bl, bis, m, bars, j: int, what: str) -> list[dict]:
+    """``_beichi_in`` 那一截的其他读法，各自判一次背驰。"""
+    base = zss_from(bl, j)
+    out = []
+    for zz in alt_readings(bl, j, base):
+        s = zz[0].start_leg
+        pre = [f"另一种读法（33课 p79 多义性），{what}从第 {j} 笔进入：笔中枢 {len(zz)} 个：{_zs_list(zz)}"]
+        if s > j + 1:
+            pre.append(f"第一个中枢从第 {s} 笔起步，第 {j}~{s - 1} 笔都算进入段 a")
+        for k in range(1, len(zz)):
+            pre.append(f"第 {k} 个和第 {k + 1} 个中枢：{REL_S.get(relation(zz[k - 1], zz[k]), relation(zz[k - 1], zz[k]))}")
+        out.append(_judge(*_merge_entry(bl, j, zz), bis, m, bars, pre, j))
+    return out
+
+
+def _judge(legs, zss, bis, m, bars, pre: list[str], j: int | None) -> dict:
+    """在选定的中枢上用引擎的 `detect` 判背驰，把结论和理由写成人话、带上画图用的几何。
+    ``j`` 是当下走势的进入段（画「当下走势起点」用），没有就是 None。"""
     b = detect(legs, zss, bis, m) if zss else None
     if b is None:
         why = reach_reason(legs, zss, bis, len(zss) - 1) if zss else "out_of_range"
@@ -438,7 +583,10 @@ def _beichi(legs, bis, m, bars, unit: str = "段") -> dict:
     # 引擎的理由统一写「b」；第一个中枢时比的是进入段 a，改成 a 免得和上面对不上
     reasons = [r.replace(" b=", " a=") if k == 0 else r for r in b.reasons]
     return {"hit": b.hit, "kind": b.kind, "top": top, "standard": b.standard,
-            "geo": geo, "why": pre + head + reasons + tail}
+            "geo": geo, "why": pre + head + reasons + tail,
+            # 离开段 c 从第几笔起、从第几段到第几段、中枢 B 从第几段起：「c 内笔走势」要在 c 里面再看一层
+            "c_bi": legs[b.leave.leg_start].src_start, "c_leg": b.leave.leg_start,
+            "c_end_leg": b.leave.leg_end, "zs_leg": z.start_leg}
 
 
 def _seg_json(s) -> dict:
@@ -490,8 +638,18 @@ def level_snapshot(bars, ids, sub_points=None, *, now=False) -> dict | None:
         "prev": ({**_seg_json(conf[-1]), "ts": bars[conf[-1].end.peak_idx].ts} if conf else None),
         "n_conf": len(conf),
         "methods": _methods(a, m, bars, ids, sub_points),
-        "beichi": {"seg": _beichi(sl, bis, m, bars), "bi": _beichi(bl, bis, m, bars, "笔")},
+        # 笔背驰只在同一根线段里比（区间套：线段是笔级别的走势）。在全部笔上划中枢
+        # 会把段起点之前的笔中枢配成 A、b 段落在另一根线段里——用户 2026-11-11 看
+        # 000651 08-17 时指出：A [7340, 7383] 在前一根向上段里还包着 7401 的段顶，
+        # b 是第106 段，c 在第108 段
+        "beichi": {"seg": _beichi(sl, bis, m, bars), "bi": _beichi_in(bl, bis, m, bars, tail.start_bi, "末段")},
     }
+    # 末段里的其他笔中枢读法（33课 多义性），各判一次：bi_r1、bi_r2…，查看器列在「笔中枢」下面
+    for k, r in enumerate(_beichi_alts(bl, bis, m, bars, tail.start_bi, "末段"), 1):
+        out["beichi"][f"bi_r{k}"] = r
+    for r in out["beichi"].values():
+        for x in ("c_bi", "c_leg", "c_end_leg", "zs_leg"):  # `_judge` 顺带给的下标，不进数据文件
+            r.pop(x, None)
     if now:
         from .sublevel import seg_beichi_now
         r = seg_beichi_now(a, bars, m)
@@ -592,7 +750,7 @@ def _events(prev: dict | None, cur: dict) -> list[str]:
             elif q.get("ok") and not x["ok"]:
                 out.append(f"{tag} {x['id']} 撤回")
         for k, name in (("seg", "线段"), ("bi", "笔")):
-            if c["beichi"][k]["hit"] and not p["beichi"][k]["hit"]:
+            if k in p["beichi"] and c["beichi"][k]["hit"] and not p["beichi"][k]["hit"]:
                 b = c["beichi"][k]
                 out.append(f"{tag} {name}{'顶' if b['top'] else '底'}背驰成立（{'趋势' if b['kind'] == 'trend' else '盘整'}）")
         if lv == "5min" and c.get("now") and not p.get("now"):
