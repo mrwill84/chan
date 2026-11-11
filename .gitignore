@@ -22,10 +22,9 @@ _plot/*.json
 _plot/*.jsonl
 _plot/*/*.png
 
-# 查看器/回放/看板的数据，由 export_interactive.py、export_replay.py、`python -m scan dash` 生成
+# 查看器/回放的数据，由 export_interactive.py、export_replay.py 生成。看板数据 dashboard_data.js 入库，打开就能看
 _plot/interactive/[0-9][0-9][0-9][0-9][0-9][0-9].js
 _plot/interactive/replay_*.js
-_plot/interactive/dashboard_data.js
 _plot/interactive/*.tmp
 
 # 全市场代码表和扫描结果，都是跑出来的
